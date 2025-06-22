@@ -31,9 +31,30 @@ jobs:
         
     - name: Clean up any existing failed stacks
       run: |
-        # Delete any existing stacks that might interfere
-        aws cloudformation delete-stack --stack-name MangoMediaStack || true
+        # Check if MangoMediaStack exists and handle DELETE_FAILED state
+        STACK_STATUS=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+        
+        if [[ "$STACK_STATUS" == "DELETE_FAILED" ]]; then
+          echo "Stack is in DELETE_FAILED state. Attempting to delete resources manually..."
+          # Get all resources in the stack
+          aws cloudformation list-stack-resources --stack-name MangoMediaStack --query 'StackResourceSummaries[?ResourceStatus!=`DELETE_COMPLETE`].[LogicalResourceId,PhysicalResourceId,ResourceType]' --output table || true
+          
+          # Delete stack with retain resources to bypass deletion issues
+          aws cloudformation delete-stack --stack-name MangoMediaStack --retain-resources WebsiteBucket || true
+          
+          # Wait a bit for the deletion attempt
+          sleep 30
+          
+          # Force delete the stack
+          aws cloudformation delete-stack --stack-name MangoMediaStack || true
+        elif [[ "$STACK_STATUS" != "DOES_NOT_EXIST" ]]; then
+          echo "Stack exists in state: $STACK_STATUS. Deleting..."
+          aws cloudformation delete-stack --stack-name MangoMediaStack || true
+        fi
+        
+        # Clean up InfrastructureStack if it exists
         aws cloudformation delete-stack --stack-name InfrastructureStack || true
+        
         echo "Waiting for stack cleanup..."
         aws cloudformation wait stack-delete-complete --stack-name MangoMediaStack || true
         aws cloudformation wait stack-delete-complete --stack-name InfrastructureStack || true
