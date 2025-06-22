@@ -37,19 +37,28 @@ jobs:
       working-directory: infrastructure
       run: npm run build
       
-    - name: Bootstrap CDK (if needed)
-      working-directory: infrastructure
-      run: npx cdk bootstrap --require-approval never
+    - name: Clean up CDK output directories
+      run: rm -rf cdk-out infrastructure/cdk.out
       
-    - name: Deploy infrastructure with CDK
-      working-directory: infrastructure
-      run: npx cdk deploy --require-approval never --outputs-file ../cdk-outputs.json
+    - name: Bootstrap CDK (if needed)
+      run: npx cdk bootstrap --require-approval never --app "infrastructure/bin/infrastructure.js"
+      
+    - name: Synthesize CDK templates
+      run: npx cdk synth --app "infrastructure/bin/infrastructure.js" --output cdk-out
+      
+    - name: Deploy infrastructure with CloudFormation
+      run: |
+        aws cloudformation deploy \
+          --template-file cdk-out/InfrastructureStack.template.json \
+          --stack-name InfrastructureStack \
+          --capabilities CAPABILITY_IAM \
+          --no-fail-on-empty-changeset
       
     - name: Get stack outputs
       id: stack-outputs
       run: |
-        BUCKET_NAME=$(cat cdk-outputs.json | jq -r '.InfrastructureStack.BucketName')
-        DISTRIBUTION_ID=$(cat cdk-outputs.json | jq -r '.InfrastructureStack.DistributionId')
+        BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name InfrastructureStack --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
+        DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name InfrastructureStack --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' --output text)
         echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
         echo "distribution-id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
         
