@@ -66,7 +66,7 @@ export class InfrastructureStack extends cdk.Stack {
         },
       ],
       defaultBehavior: {
-        origin: new origins.S3Origin(websiteBucket, {
+        origin: origins.S3BucketOrigin.withOriginAccessIdentity(websiteBucket, {
           originAccessIdentity: originAccessIdentity,
         }),
         compress: true,
@@ -92,18 +92,20 @@ export class InfrastructureStack extends cdk.Stack {
 
     // Deploy website content to S3
     new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-      sources: [s3deploy.Source.asset('../')],
+      sources: [s3deploy.Source.asset('../', {
+        exclude: [
+          'infrastructure/**/*',
+          '.git/**/*',
+          '.github/**/*',
+          'node_modules/**/*',
+          '**/*.md',
+          '.*',
+          '**/.*',
+        ],
+      })],
       destinationBucket: websiteBucket,
       distribution,
       distributionPaths: ['/*'],
-      exclude: [
-        '.git/*',
-        '.github/*',
-        'infrastructure/*',
-        'node_modules/*',
-        '*.md',
-        '.*',
-      ],
     });
 
     // Output important values
