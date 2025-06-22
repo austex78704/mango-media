@@ -40,6 +40,18 @@ jobs:
     - name: Clean up CDK output directories
       run: rm -rf cdk-out infrastructure/cdk.out
       
+    - name: Clean up failed CDK bootstrap stack
+      run: |
+        # Check if CDKToolkit stack exists and is in DELETE_FAILED state
+        STACK_STATUS=$(aws cloudformation describe-stacks --stack-name CDKToolkit --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+        if [ "$STACK_STATUS" = "DELETE_FAILED" ]; then
+          echo "CDKToolkit stack is in DELETE_FAILED state, cleaning up..."
+          aws cloudformation delete-stack --stack-name CDKToolkit
+          aws cloudformation wait stack-delete-complete --stack-name CDKToolkit
+        elif [ "$STACK_STATUS" != "DOES_NOT_EXIST" ] && [ "$STACK_STATUS" != "CREATE_COMPLETE" ] && [ "$STACK_STATUS" != "UPDATE_COMPLETE" ]; then
+          echo "CDKToolkit stack status: $STACK_STATUS - may need manual intervention"
+        fi
+      
     - name: Bootstrap CDK (if needed)
       run: npx cdk bootstrap --require-approval never --app "infrastructure/bin/infrastructure.js"
       
