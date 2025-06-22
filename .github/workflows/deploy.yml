@@ -29,31 +29,35 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
         
-    - name: Deploy pure CloudFormation infrastructure
-      run: echo "Using pure CloudFormation template - no CDK dependencies"
+    - name: Clean up any existing failed stacks
+      run: |
+        # Delete any existing stacks that might interfere
+        aws cloudformation delete-stack --stack-name MangoMediaStack || true
+        aws cloudformation delete-stack --stack-name InfrastructureStack || true
+        echo "Waiting for stack cleanup..."
+        aws cloudformation wait stack-delete-complete --stack-name MangoMediaStack || true
+        aws cloudformation wait stack-delete-complete --stack-name InfrastructureStack || true
       
-    - name: Deploy infrastructure with pure CloudFormation
+    - name: Deploy minimal CloudFormation infrastructure
       run: |
         aws cloudformation deploy \
-          --template-file cloudformation-template.json \
-          --stack-name MangoMediaStack \
-          --capabilities CAPABILITY_IAM \
-          --no-fail-on-empty-changeset \
-          --parameter-overrides DomainName=mangomedia.com
+          --template-file simple-template.json \
+          --stack-name MangoMediaSimple \
+          --no-fail-on-empty-changeset
       
     - name: Get stack outputs
       id: stack-outputs
       run: |
-        BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
-        DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' --output text)
-        NAMESERVERS=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].Outputs[?OutputKey==`NameServers`].OutputValue' --output text)
+        BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name MangoMediaSimple --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
+        DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name MangoMediaSimple --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' --output text)
+        WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name MangoMediaSimple --query 'Stacks[0].Outputs[?OutputKey==`WebsiteURL`].OutputValue' --output text)
         echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
         echo "distribution-id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
-        echo "nameservers=$NAMESERVERS" >> $GITHUB_OUTPUT
+        echo "website-url=$WEBSITE_URL" >> $GITHUB_OUTPUT
         echo "### Stack Outputs ###"
         echo "Bucket Name: $BUCKET_NAME"
         echo "Distribution ID: $DISTRIBUTION_ID"
-        echo "NameServers: $NAMESERVERS"
+        echo "Website URL: $WEBSITE_URL"
         
     - name: Deploy website files to S3
       run: |
