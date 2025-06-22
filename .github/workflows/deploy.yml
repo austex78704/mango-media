@@ -31,39 +31,25 @@ jobs:
         
     - name: Clean up any existing failed stacks
       run: |
-        # Check if MangoMediaStack exists and handle DELETE_FAILED state
-        STACK_STATUS=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+        # Use timestamp-based stack name to avoid conflicts with stuck stacks
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        STACK_NAME="MangoMedia-${TIMESTAMP}"
+        echo "stack-name=$STACK_NAME" >> $GITHUB_OUTPUT
+        echo "Using stack name: $STACK_NAME"
         
-        if [[ "$STACK_STATUS" == "DELETE_FAILED" ]]; then
-          echo "Stack is in DELETE_FAILED state. Attempting to delete resources manually..."
-          # Get all resources in the stack
-          aws cloudformation list-stack-resources --stack-name MangoMediaStack --query 'StackResourceSummaries[?ResourceStatus!=`DELETE_COMPLETE`].[LogicalResourceId,PhysicalResourceId,ResourceType]' --output table || true
-          
-          # Delete stack with retain resources to bypass deletion issues
-          aws cloudformation delete-stack --stack-name MangoMediaStack --retain-resources WebsiteBucket || true
-          
-          # Wait a bit for the deletion attempt
-          sleep 30
-          
-          # Force delete the stack
-          aws cloudformation delete-stack --stack-name MangoMediaStack || true
-        elif [[ "$STACK_STATUS" != "DOES_NOT_EXIST" ]]; then
-          echo "Stack exists in state: $STACK_STATUS. Deleting..."
-          aws cloudformation delete-stack --stack-name MangoMediaStack || true
-        fi
+        # Clean up any old stacks that might interfere (ignore errors)
+        aws cloudformation delete-stack --stack-name MangoMediaStack || true
+        aws cloudformation delete-stack --stack-name MangoMediaSimple || true
         
         # Clean up InfrastructureStack if it exists
         aws cloudformation delete-stack --stack-name InfrastructureStack || true
-        
-        echo "Waiting for stack cleanup..."
-        aws cloudformation wait stack-delete-complete --stack-name MangoMediaStack || true
-        aws cloudformation wait stack-delete-complete --stack-name InfrastructureStack || true
+      id: cleanup
       
     - name: Deploy CloudFormation infrastructure
       run: |
         aws cloudformation deploy \
           --template-file cloudformation-template.json \
-          --stack-name MangoMediaStack \
+          --stack-name ${{ steps.cleanup.outputs.stack-name }} \
           --parameter-overrides DomainName=mangomedia.com \
           --capabilities CAPABILITY_IAM \
           --no-fail-on-empty-changeset
@@ -71,10 +57,10 @@ jobs:
     - name: Get stack outputs
       id: stack-outputs
       run: |
-        BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
-        DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' --output text)
-        WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].Outputs[?OutputKey==`WebsiteURL`].OutputValue' --output text)
-        NAMESERVERS=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].Outputs[?OutputKey==`NameServers`].OutputValue' --output text)
+        BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name ${{ steps.cleanup.outputs.stack-name }} --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
+        DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name ${{ steps.cleanup.outputs.stack-name }} --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' --output text)
+        WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name ${{ steps.cleanup.outputs.stack-name }} --query 'Stacks[0].Outputs[?OutputKey==`WebsiteURL`].OutputValue' --output text)
+        NAMESERVERS=$(aws cloudformation describe-stacks --stack-name ${{ steps.cleanup.outputs.stack-name }} --query 'Stacks[0].Outputs[?OutputKey==`NameServers`].OutputValue' --output text)
         echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
         echo "distribution-id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
         echo "website-url=$WEBSITE_URL" >> $GITHUB_OUTPUT
