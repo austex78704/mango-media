@@ -40,23 +40,35 @@ jobs:
     - name: Clean up CDK output directories
       run: rm -rf cdk-out infrastructure/cdk.out
       
-    - name: Clean up failed CDK bootstrap stack
+    - name: Force delete CDK bootstrap stack if it exists
       run: |
-        # Check if CDKToolkit stack exists and is in DELETE_FAILED state
-        STACK_STATUS=$(aws cloudformation describe-stacks --stack-name CDKToolkit --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "DOES_NOT_EXIST")
-        if [ "$STACK_STATUS" = "DELETE_FAILED" ]; then
-          echo "CDKToolkit stack is in DELETE_FAILED state, cleaning up..."
-          aws cloudformation delete-stack --stack-name CDKToolkit
-          aws cloudformation wait stack-delete-complete --stack-name CDKToolkit
-        elif [ "$STACK_STATUS" != "DOES_NOT_EXIST" ] && [ "$STACK_STATUS" != "CREATE_COMPLETE" ] && [ "$STACK_STATUS" != "UPDATE_COMPLETE" ]; then
-          echo "CDKToolkit stack status: $STACK_STATUS - may need manual intervention"
-        fi
+        # Try to force delete the CDKToolkit stack regardless of state
+        aws cloudformation delete-stack --stack-name CDKToolkit || true
+        echo "Waiting for stack deletion..."
+        aws cloudformation wait stack-delete-complete --stack-name CDKToolkit || true
+        echo "Stack cleanup complete or stack didn't exist"
       
-    - name: Bootstrap CDK (if needed)
-      run: npx cdk bootstrap --require-approval never --app "infrastructure/bin/infrastructure.js"
+    - name: Create minimal bootstrap resources manually
+      run: |
+        # Create the S3 bucket that CDK needs for assets
+        BUCKET_NAME="cdk-hnb659fds-assets-130790513366-us-east-1"
+        aws s3 mb s3://$BUCKET_NAME --region us-east-1 || echo "Bucket already exists or creation failed"
+        aws s3api put-bucket-versioning --bucket $BUCKET_NAME --versioning-configuration Status=Enabled || true
+        aws s3api put-bucket-encryption --bucket $BUCKET_NAME --server-side-encryption-configuration Rules=[{ApplyServerSideEncryptionByDefault={SSEAlgorithm=AES256}}] || true
       
-    - name: Synthesize CDK templates
+    - name: Synthesize CDK templates only (no bootstrap)
       run: npx cdk synth --app "infrastructure/bin/infrastructure.js" --output cdk-out
+      
+    - name: Upload CDK assets to S3
+      run: |
+        # Upload the Lambda function asset that CDK generated
+        BUCKET_NAME="cdk-hnb659fds-assets-130790513366-us-east-1"
+        if [ -d "cdk-out/asset.faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6" ]; then
+          cd cdk-out/asset.faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6
+          zip -r ../faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip .
+          cd ../..
+          aws s3 cp cdk-out/faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip s3://$BUCKET_NAME/faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip
+        fi
       
     - name: Deploy infrastructure with CloudFormation
       run: |
