@@ -32,9 +32,10 @@ export class InfrastructureStack extends cdk.Stack {
     // Grant read permissions to CloudFront
     websiteBucket.grantRead(originAccessIdentity);
 
-    // Create hosted zone for the domain (if it doesn't exist)
-    const zone = route53.HostedZone.fromLookup(this, 'Zone', {
-      domainName: domainName,
+    // Create hosted zone for the domain
+    const zone = new route53.HostedZone(this, 'Zone', {
+      zoneName: domainName,
+      comment: `Hosted zone for ${domainName}`,
     });
 
     // Create SSL certificate
