@@ -43,11 +43,30 @@ jobs:
       
     - name: Deploy infrastructure with CDK
       working-directory: infrastructure
-      run: npx cdk deploy --require-approval never
+      run: npx cdk deploy --require-approval never --outputs-file ../cdk-outputs.json
       
     - name: Get stack outputs
       id: stack-outputs
-      working-directory: infrastructure
       run: |
-        DISTRIBUTION_ID=$(npx cdk list --long | grep DistributionId | awk '{print $2}')
+        BUCKET_NAME=$(cat cdk-outputs.json | jq -r '.InfrastructureStack.BucketName')
+        DISTRIBUTION_ID=$(cat cdk-outputs.json | jq -r '.InfrastructureStack.DistributionId')
+        echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
         echo "distribution-id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
+        
+    - name: Deploy website files to S3
+      run: |
+        aws s3 sync . s3://${{ steps.stack-outputs.outputs.bucket-name }} \
+          --delete \
+          --exclude "infrastructure/*" \
+          --exclude ".git/*" \
+          --exclude ".github/*" \
+          --exclude "node_modules/*" \
+          --exclude "*.md" \
+          --exclude ".*" \
+          --exclude "cdk-outputs.json"
+          
+    - name: Invalidate CloudFront cache
+      run: |
+        aws cloudfront create-invalidation \
+          --distribution-id ${{ steps.stack-outputs.outputs.distribution-id }} \
+          --paths "/*"

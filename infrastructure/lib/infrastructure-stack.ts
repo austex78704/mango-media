@@ -90,23 +90,8 @@ export class InfrastructureStack extends cdk.Stack {
       zone,
     });
 
-    // Deploy website content to S3
-    new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-      sources: [s3deploy.Source.asset('../', {
-        exclude: [
-          'infrastructure/**/*',
-          '.git/**/*',
-          '.github/**/*',
-          'node_modules/**/*',
-          '**/*.md',
-          '.*',
-          '**/.*',
-        ],
-      })],
-      destinationBucket: websiteBucket,
-      distribution,
-      distributionPaths: ['/*'],
-    });
+    // Note: Website content will be deployed separately via GitHub Actions
+    // This avoids the asset bundling circular dependency issue
 
     // Output important values
     new cdk.CfnOutput(this, 'BucketName', {
