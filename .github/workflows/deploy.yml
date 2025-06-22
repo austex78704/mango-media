@@ -38,19 +38,22 @@ jobs:
         aws cloudformation wait stack-delete-complete --stack-name MangoMediaStack || true
         aws cloudformation wait stack-delete-complete --stack-name InfrastructureStack || true
       
-    - name: Deploy minimal CloudFormation infrastructure
+    - name: Deploy CloudFormation infrastructure
       run: |
         aws cloudformation deploy \
-          --template-file simple-template.json \
-          --stack-name MangoMediaSimple \
+          --template-file cloudformation-template.json \
+          --stack-name MangoMediaStack \
+          --parameter-overrides DomainName=mangomedia.com \
+          --capabilities CAPABILITY_IAM \
           --no-fail-on-empty-changeset
       
     - name: Get stack outputs
       id: stack-outputs
       run: |
-        BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name MangoMediaSimple --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
-        DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name MangoMediaSimple --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' --output text)
-        WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name MangoMediaSimple --query 'Stacks[0].Outputs[?OutputKey==`WebsiteURL`].OutputValue' --output text)
+        BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
+        DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' --output text)
+        WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].Outputs[?OutputKey==`WebsiteURL`].OutputValue' --output text)
+        NAMESERVERS=$(aws cloudformation describe-stacks --stack-name MangoMediaStack --query 'Stacks[0].Outputs[?OutputKey==`NameServers`].OutputValue' --output text)
         echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
         echo "distribution-id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
         echo "website-url=$WEBSITE_URL" >> $GITHUB_OUTPUT
@@ -58,6 +61,8 @@ jobs:
         echo "Bucket Name: $BUCKET_NAME"
         echo "Distribution ID: $DISTRIBUTION_ID"
         echo "Website URL: $WEBSITE_URL"
+        echo "### IMPORTANT: Update GoDaddy Nameservers ###"
+        echo "NameServers: $NAMESERVERS"
         
     - name: Deploy website files to S3
       run: |
@@ -69,7 +74,10 @@ jobs:
           --exclude "node_modules/*" \
           --exclude "*.md" \
           --exclude ".*" \
-          --exclude "cdk-outputs.json"
+          --exclude "cdk-outputs.json" \
+          --exclude "cdk-out/*" \
+          --exclude "simple-template.json" \
+          --exclude "cloudformation-template.json"
           
     - name: Invalidate CloudFront cache
       run: |
