@@ -3,8 +3,12 @@ name: Deploy Mango Media Website
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    paths: 
+      - 'index.html'
+      - 'styles.css'
+      - '*.jpeg'
+      - '*.jpg'
+      - '*.png'
   workflow_dispatch:
 
 jobs:
@@ -14,13 +18,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: infrastructure/package-lock.json
         
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -29,65 +26,32 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
         
-    - name: Clean up any existing failed stacks
-      run: |
-        # Use timestamp-based stack name to avoid conflicts with stuck stacks
-        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-        STACK_NAME="MangoMedia-${TIMESTAMP}"
-        echo "stack-name=$STACK_NAME" >> $GITHUB_OUTPUT
-        echo "Using stack name: $STACK_NAME"
-        
-        # Clean up any old stacks that might interfere (ignore errors)
-        aws cloudformation delete-stack --stack-name MangoMediaStack || true
-        aws cloudformation delete-stack --stack-name MangoMediaSimple || true
-        
-        # Clean up InfrastructureStack if it exists
-        aws cloudformation delete-stack --stack-name InfrastructureStack || true
-      id: cleanup
-      
-    - name: Deploy CloudFormation infrastructure
-      run: |
-        aws cloudformation deploy \
-          --template-file cloudformation-template.json \
-          --stack-name ${{ steps.cleanup.outputs.stack-name }} \
-          --parameter-overrides DomainName=mangomedia.com \
-          --capabilities CAPABILITY_IAM \
-          --no-fail-on-empty-changeset
-      
-    - name: Get stack outputs
-      id: stack-outputs
-      run: |
-        BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name ${{ steps.cleanup.outputs.stack-name }} --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text)
-        DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name ${{ steps.cleanup.outputs.stack-name }} --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' --output text)
-        WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name ${{ steps.cleanup.outputs.stack-name }} --query 'Stacks[0].Outputs[?OutputKey==`WebsiteURL`].OutputValue' --output text)
-        NAMESERVERS=$(aws cloudformation describe-stacks --stack-name ${{ steps.cleanup.outputs.stack-name }} --query 'Stacks[0].Outputs[?OutputKey==`NameServers`].OutputValue' --output text)
-        echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-        echo "distribution-id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
-        echo "website-url=$WEBSITE_URL" >> $GITHUB_OUTPUT
-        echo "### Stack Outputs ###"
-        echo "Bucket Name: $BUCKET_NAME"
-        echo "Distribution ID: $DISTRIBUTION_ID"
-        echo "Website URL: $WEBSITE_URL"
-        echo "### IMPORTANT: Update GoDaddy Nameservers ###"
-        echo "NameServers: $NAMESERVERS"
-        
     - name: Deploy website files to S3
       run: |
-        aws s3 sync . s3://${{ steps.stack-outputs.outputs.bucket-name }} \
+        echo "Uploading website files to S3..."
+        aws s3 sync . s3://mangomedia-website-simple \
           --delete \
-          --exclude "infrastructure/*" \
-          --exclude ".git/*" \
-          --exclude ".github/*" \
-          --exclude "node_modules/*" \
-          --exclude "*.md" \
-          --exclude ".*" \
-          --exclude "cdk-outputs.json" \
-          --exclude "cdk-out/*" \
-          --exclude "simple-template.json" \
-          --exclude "cloudformation-template.json"
-          
+          --exclude "*" \
+          --include "index.html" \
+          --include "styles.css" \
+          --include "*.jpeg" \
+          --include "*.jpg" \
+          --include "*.png"
+        echo "✅ Files uploaded successfully"
+        
     - name: Invalidate CloudFront cache
       run: |
-        aws cloudfront create-invalidation \
-          --distribution-id ${{ steps.stack-outputs.outputs.distribution-id }} \
-          --paths "/*"
+        echo "Creating CloudFront invalidation..."
+        INVALIDATION_ID=$(aws cloudfront create-invalidation \
+          --distribution-id E1V511OTCBNCML \
+          --paths "/*" \
+          --query 'Invalidation.Id' \
+          --output text)
+        echo "✅ Invalidation created: $INVALIDATION_ID"
+        echo "🌐 Website will update in 1-5 minutes"
+        
+    - name: Display success message
+      run: |
+        echo "🎉 Deployment completed successfully!"
+        echo "📝 Changes will be live at https://mangomedia.com in 1-5 minutes"
+        echo "🔄 CloudFront is invalidating the cache globally"
