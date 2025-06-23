@@ -185,12 +185,21 @@ npx cdk deploy
 - Route53 nameservers generated and configured
 - GoDaddy nameservers updated to AWS Route53
 
+### ⚠️ Troubleshooting DNS Issues
+- **Issue Identified**: Multiple Route53 hosted zones for mangomedia.com (3 zones found)
+- **Problem**: Conflicting DNS configurations preventing proper resolution
+- **Status**: Diagnosing which hosted zone contains active CloudFront records
+- **Nameservers in GoDaddy**: ns-1815.awsdns-34.co.uk, ns-1032.awsdns-01.org, ns-366.awsdns-45.com, ns-970.awsdns-57.net
+- **Next**: Clean up duplicate hosted zones and retain only the active one
+
 ### 🔄 In Progress
-- DNS propagation (15 minutes - 48 hours)
-- SSL certificate validation (automatic via Route53)
+- DNS troubleshooting and hosted zone cleanup
+- SSL certificate validation (pending DNS resolution)
 
 ### ⏳ Pending
-- Final testing and validation once DNS propagates
+- Remove duplicate Route53 hosted zones
+- Verify correct hosted zone has CloudFront A records
+- Final testing and validation once DNS issues resolved
 - Go-live confirmation at https://mangomedia.com
 
 ---
@@ -240,6 +249,12 @@ npx cdk deploy
 - **CloudFormation DELETE_FAILED Issue**: Resolved by implementing timestamp-based stack names
 - **Deployment Strategy**: Used dynamic stack naming to avoid conflicts with stuck stacks
 - **Final Stack**: Successfully deployed using timestamp-based approach
+- **DNS Resolution Issue (June 22, 2025)**: 
+  - Discovered 3 duplicate Route53 hosted zones for mangomedia.com
+  - Causing DNS conflicts and zero propagation
+  - All zones have same domain name but different zone IDs
+  - Nameservers correctly set in GoDaddy but pointing to wrong/empty zone
+  - **Resolution Required**: Identify active zone with CloudFront records, delete duplicates
 
 ---
 
