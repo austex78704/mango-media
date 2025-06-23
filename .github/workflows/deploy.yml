@@ -1,4 +1,4 @@
-name: Deploy Mango Media Website
+name: Deploy Website Files Only
 
 on:
   push:
